@@ -1,28 +1,49 @@
 import $ from 'jquery';
-import {parseCode, createTable} from './code-analyzer';
+import {substituteSymbols, substituteStatement, parseExpression, parseCode} from './symbolic-substituter';
 
-let counter;
+function parseConditions(inputCode, inputVector) {
+    let parsed = parseCode(inputCode);
+    let conditions = [];
+    let variables = {};
+    substituteStatement(parsed, variables, inputVector, conditions);
+    let res = [];
+    for (let i = 0; i < conditions.length; i++)
+        res.push([eval(parseExpression(parseCode(conditions[i][0]).body[0].expression, Object.assign(inputVector, variables))), conditions[i][1]]);
+    return res;
+}
+
+function colorStatements(parsedCode, rows) {
+    let conditions = ['if', 'while', 'else'];
+    let color;
+    for (let i = 0, rowIndex = 0; i < parsedCode.length; i++)
+        if (conditions.some(el => parsedCode[i].includes(el))) {
+            if(rows[rowIndex][0]) color = 'green';
+            else color = 'red';
+            parsedCode[i] = '<mark class="{}">{}</mark>'.format(color, parsedCode[i]);
+            rowIndex++;
+        }
+}
+
+function parseArguments(input) {
+    let args = {};
+    let array = input.indexOf('[');
+    let end = input.indexOf(',');
+    while(end !== -1){
+        if(!(array === -1 || end < array)) end = input.indexOf(']', array) + 1;
+        args[input.slice(0, end).trim().split('=')[0].trim()] = eval(input.slice(0, end).trim().split('=')[1]);
+        input = input.slice(end + 1);
+        array = input.indexOf('[');
+        end = input.indexOf(',');
+    }
+    args[input.split('=')[0].trim()] = eval(input.split('=')[1]);
+    return args;
+}
 
 $(document).ready(function () {
     $('#codeSubmissionButton').click(() => {
         let codeToParse = $('#codePlaceholder').val();
-        let parsedCode = parseCode(codeToParse);
-        $('#parsedCode').val(JSON.stringify(parsedCode, null, 2));
-        for (let row = document.getElementById('table').rows.length - 1; row >= 1; row--)
-            document.getElementById('table').deleteRow(row);
-        const structures = createTable(parsedCode);
-        counter = 1;
-        for (const structure of structures)
-            addLine(document.getElementById('table'), structure.line, structure.type, structure.name, structure.condition, structure.value);
+        let parsedCode = substituteSymbols(codeToParse).split('\n');
+        colorStatements(parsedCode, parseConditions(codeToParse, parseArguments($('#inputVector').val())));
+        $('#codeParseResults').html('<div>'+ parsedCode.join('<p></p>') +'</div>');
     });
 });
-
-function addLine(table, line, type, name, condition, value) {
-    const row = table.insertRow(counter);
-    row.insertCell(0).appendChild(document.createTextNode(line));
-    row.insertCell(1).appendChild(document.createTextNode(type));
-    row.insertCell(2).appendChild(document.createTextNode(name));
-    row.insertCell(3).appendChild(document.createTextNode(condition));
-    row.insertCell(4).appendChild(document.createTextNode(value));
-    counter++;
-}
